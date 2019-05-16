@@ -373,14 +373,27 @@ def get_pnl_hbhy(k_line,signals,initial_eqt=1,face_val=100,min_move=0.01,slip=1,
     return pnl
 
     def give_order(amount, price, type_of_trade)
+        max_retry = 0
         ret = give_order_request(ACCOUNT_ID, amount, price, SOURCE, SYMBOL, type_of_trade)
+        order_id = ret["data"]
         while 1:
-            order_info = get_order(ret["data"])
-            if order_info[] == "filled":
-                FILLED_ORDER.add(order_info)
+            order_info = get_order(order_id)
+            if order_info["state"] == "filled":
+                if type_of_trade == buy:
+                    FILLED_ORDER.add(order_info)
+                else:
+                    FILLED_ORDER.minus(order_info)
+                return 0
             else:
-                
-            
+                ret = get_depth(SYMBOL)[bid]
+                target = type_of_trade == buy ? ret["bid"][0] : ret["sell"][0]
+                if(abs(ret["bid"] - price) > DELTA_VALUE):
+                    max_retry += 1
+                    if max_retry > 3:
+                        return 3
+                    cancel_order(order_id)
+                    ret = give_order_request(ACCOUNT_ID, amount, target , SOURCE, SYMBOL, type_of_trade)
+                    order_id = ret["data"]           
 
     def write_log(log_file, string, ts):
         log_file.write(string(time.time()) + ":ts" + ts + ":string")
