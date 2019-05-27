@@ -372,7 +372,15 @@ def get_pnl_hbhy(k_line,signals,initial_eqt=1,face_val=100,min_move=0.01,slip=1,
     
     return pnl
 
-    def give_order(amount, price, type_of_trade)
+    def give_order(type_of_trade):
+        if type_of_trade == "buy"：
+            bid_order()
+        elif type_of_trade == "sell"：
+            sell_order()
+        else:
+            return false
+    
+    def buy_order(amount, price, type_of_trade):
         max_retry = 0
         ret = give_order_request(ACCOUNT_ID, amount, price, SOURCE, SYMBOL, type_of_trade)
         order_id = ret["data"]
@@ -385,15 +393,24 @@ def get_pnl_hbhy(k_line,signals,initial_eqt=1,face_val=100,min_move=0.01,slip=1,
                     FILLED_ORDER.minus(order_info)
                 return 0
             else:
-                ret = get_depth(SYMBOL)[bid]
-                target = type_of_trade == buy ? ret["bid"][0] : ret["sell"][0]
-                if(abs(ret["bid"] - price) > DELTA_VALUE):
+                ret = get_contract_depth(SYMBOL)[bid]
+                target = ret["bids"][0] if type_of_trade == "buy" else ret["asks"][0]
+                if(abs(target - price) > DELTA_VALUE):
+                    price = target
                     max_retry += 1
                     if max_retry > 3:
                         return 3
                     cancel_order(order_id)
-                    ret = give_order_request(ACCOUNT_ID, amount, target , SOURCE, SYMBOL, type_of_trade)
-                    order_id = ret["data"]           
+                    ret = give_order_request(ACCOUNT_ID, amount, price , SOURCE, SYMBOL, type_of_trade)
+                    order_id = ret["data"]
+
+    def sell_order(,clear_all):
+        if clear_all:
+            to_sell = KEPY_ORDER
+        else:
+            to_sell = order_id
+
+                   
 
     def write_log(log_file, string, ts):
         log_file.write(string(time.time()) + ":ts" + ts + ":string")
@@ -438,22 +455,13 @@ def get_pnl_hbhy(k_line,signals,initial_eqt=1,face_val=100,min_move=0.01,slip=1,
 
         while(1):     
             # request data
-            # check open order
-            for order in OPEN_ORDER:
-                response = get_order(order["order_id"])
-                if response == "filled":
-                    FILLED_ORDER.add(order)
-                    OPEN_ORDER.minus(order)
-                else:
-                    TODOCheckWhetherCancelOrders()
-
             # skip if ts is not updated.
             request_kline_data = get_contract_kline(self, symbol, period, size=150)
             for ts_data in request_kline_data:
                 if ts_data["ts"] > new_ts:
                     kline.add(ts_data)
                     kline_updated = 1
-            current_ts = request_kline_data[-1]["ts"]''
+            current_ts = request_kline_data[-1]["ts"]
 
             # compute signal
             if kline_updated:
@@ -461,6 +469,11 @@ def get_pnl_hbhy(k_line,signals,initial_eqt=1,face_val=100,min_move=0.01,slip=1,
                 signal = DochianRange(kline)
             else:
                 continue
+
+            # get contract depth
+            ret = get_contract_depth(self, symbol, "step0")
+            buy_price = ret[]
+            sell_price = ret[]
 
             # make decision and trade        
             """ 计算true range """
