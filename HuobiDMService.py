@@ -4,7 +4,11 @@
 # @Author  : zhaobo
 # @github  : 
 
-from HuobiDMUtil import http_get_request, api_key_post
+from HuobiDMUtil import http_get_request_with_retry, api_key_post
+
+import smtplib  #加载smtplib模块
+from email.mime.text import MIMEText
+from email.utils import formataddr
 
 class HuobiDM:
 
@@ -19,8 +23,39 @@ class HuobiDM:
     Market data API
     ======================
     '''
+
+    def send_mail(error_message, mail_to):
+        my_sender='发件人邮箱账号' #发件人邮箱账号，为了后面易于维护，所以写成了变量
+        ret=True
+        try:
+            msg=MIMEText('填写邮件内容','plain','utf-8')
+            msg['From']=formataddr(["发件人邮箱昵称",my_sender])   #括号里的对应发件人邮箱昵称、发件人邮箱账号
+            msg['To']=formataddr(["收件人邮箱昵称",my_user])   #括号里的对应收件人邮箱昵称、收件人邮箱账号
+            msg['Subject']="Network Exception is hit" #邮件的主题，也可以说是标题
+
+            server=smtplib.SMTP("smtp.xxx.com",25)  #发件人邮箱中的SMTP服务器，端口是25
+            server.login(my_sender,"发件人邮箱密码")    #括号中对应的是发件人邮箱账号、邮箱密码
+            server.sendmail(my_sender,[my_user,],msg.as_string())   #括号中对应的是发件人邮箱账号、收件人邮箱账号、发送邮件
+            server.quit()   #这句是关闭连接的意思
+        except Exception:   #如果try中的语句没有执行，则会执行下面的ret=False
+            ret=False
+        return ret
+
+    def send_alert(error_message):
+        send_mail(error_message, "505529920@qq.com")
+        send_mail(error_message, "2691266020@qq.com")
     
-    
+    def http_get_request_with_retry(self, url, param):
+        retry_count = 3
+        while retry_count > 0:
+            ret = http_get_request(url, param)
+            if ret["status"] = "fail":
+                retry_count -= 1
+            else:
+                return ret
+        TODOSendAlert()
+                
+
     # 获取合约信息
     def get_contract_info(self, symbol='', contract_type='', contract_code=''):
         """
@@ -39,7 +74,7 @@ class HuobiDM:
             params['contract_code'] = contract_code
     
         url = self.__url + '/api/v1/contract_contract_info'
-        return http_get_request(url, params)
+        return http_get_request_with_retry(url, params)
     
     
     # 获取合约指数信息
@@ -50,7 +85,7 @@ class HuobiDM:
         params = {'symbol': symbol}
     
         url = self.__url + '/api/v1/contract_index'
-        return http_get_request(url, params)
+        return http_get_request_with_retry(url, params)
     
     
     # 获取合约最高限价和最低限价
@@ -70,7 +105,7 @@ class HuobiDM:
             params['contract_code'] = contract_code
     
         url = self.__url + '/api/v1/contract_price_limit'
-        return http_get_request(url, params)
+        return http_get_request_with_retry(url, params)
     
     
     # 获取当前可用合约总持仓量
@@ -86,7 +121,7 @@ class HuobiDM:
                   'contract_code': contract_code}
     
         url = self.__url + '/api/v1/contract_open_interest'
-        return http_get_request(url, params)   
+        return http_get_request_with_retry(url, params)   
         
     
     # 获取行情深度
@@ -100,7 +135,7 @@ class HuobiDM:
                   'type': type}
     
         url = self.__url + '/market/depth'
-        return http_get_request(url, params)
+        return http_get_request_with_retry(url, params)
     
     
     # 获取KLine
@@ -117,7 +152,7 @@ class HuobiDM:
             params['size'] = size
     
         url = self.__url + '/market/history/kline'
-        return http_get_request(url, params)
+        return http_get_request_with_retry(url, params)
     
     
     # 获取聚合行情
@@ -128,7 +163,7 @@ class HuobiDM:
         params = {'symbol': symbol}
     
         url = self.__url + '/market/detail/merged'
-        return http_get_request(url, params)
+        return http_get_request_with_retry(url, params)
     
     
     # 获取市场最近成交记录
@@ -141,7 +176,7 @@ class HuobiDM:
                   'size' : size}
     
         url = self.__url + '/market/trade'
-        return http_get_request(url, params)
+        return http_get_request_with_retry(url, params)
     
     
     # 批量获取最近的交易记录
@@ -154,7 +189,7 @@ class HuobiDM:
                   'size' : size}
     
         url = self.__url + '/market/history/trade'
-        return http_get_request(url, params)
+        return http_get_request_with_retry(url, params)
     
     
     
@@ -395,7 +430,7 @@ class HuobiDM:
 
         url = self.__url + '/api/v1/order/openOrders'
 
-        return http_get_request(url, params)
+        return http_get_request_with_retry(url, params)
 
         def give_order_request(self, account_id, amount, price, source, symbol, type_of_trade):
         param = {
@@ -409,7 +444,7 @@ class HuobiDM:
 
         url = self.__url + '/api/v1/order/orders/place'
 
-        return http_get_request(url, params)
+        return http_get_request_with_retry(url, params)
 
     def get_order(self, order_id):
         param = {
@@ -418,8 +453,8 @@ class HuobiDM:
 
         url = self.__url + '/api/v1/order/openOrders'
 
-        return http_get_request(url, params)
+        return http_get_request_with_retry(url, params)
 
     # return list {"currency":utsc, "type":"frozen/trade", "amount":""}
     def get_account_balance(self):
-        return http_get_request(self._url  + "/v1/account/"+ACCOUNT_ID+"/balance")
+        return http_get_request_with_retry(self._url  + "/v1/account/"+ACCOUNT_ID+"/balance")

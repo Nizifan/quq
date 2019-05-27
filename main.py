@@ -372,206 +372,236 @@ def get_pnl_hbhy(k_line,signals,initial_eqt=1,face_val=100,min_move=0.01,slip=1,
     
     return pnl
 
-    def give_order(type_of_trade):
-        if type_of_trade == "buy"：
-            bid_order()
-        elif type_of_trade == "sell"：
-            sell_order()
-        else:
-            return false
+def give_order(type_of_trade):
+    if type_of_trade == "buy"：
+        bid_order()
+    elif type_of_trade == "sell"：
+        sell_order()
+    else:
+        return false
+
+def buy_order(amount, price, type_of_trade):
+    ret = give_order_request(ACCOUNT_ID, amount, price, SOURCE, SYMBOL, type_of_trade)
+    order_id = ret["data"]["order_id"]
+    is_bid = type_of_trade == "" or type_of_trade == ""
     
-    def buy_order(amount, price, type_of_trade):
-        max_retry = 0
-        ret = give_order_request(ACCOUNT_ID, amount, price, SOURCE, SYMBOL, type_of_trade)
-        order_id = ret["data"]
-        while 1:
-            order_info = get_order(order_id)
-            if order_info["state"] == "filled":
-                if type_of_trade == buy:
-                    FILLED_ORDER.add(order_info)
-                else:
-                    FILLED_ORDER.minus(order_info)
-                return 0
+    wait_count = 5
+    while 1:
+        time.sleep(1)
+        order_info = get_order(order_id)
+        if order_info["data"][0]["volume"] == order_info["data"][0]["trade_volumn"]:
+            if type_of_trade == buy:
+                FILLED_ORDER.add(order_info)
             else:
-                ret = get_contract_depth(SYMBOL)[bid]
-                target = ret["bids"][0] if type_of_trade == "buy" else ret["asks"][0]
-                if(abs(target - price) > DELTA_VALUE):
-                    price = target
-                    max_retry += 1
-                    if max_retry > 3:
-                        return 3
-                    cancel_order(order_id)
-                    ret = give_order_request(ACCOUNT_ID, amount, price , SOURCE, SYMBOL, type_of_trade)
-                    order_id = ret["data"]
-
-    def sell_order(,clear_all):
-        if clear_all:
-            to_sell = KEPY_ORDER
+                FILLED_ORDER.minus(order_info)
+            return 0
         else:
-            to_sell = order_id
+            if wait_count > 0:
+                wait_count -= 1
+                continue
+            else:
+                while 1:
+                    ret = cancel_order(order_id)
+                    if ret["status"] == "fail":
+                        time.sleep(1)
+                        continue
+                    else:
+                        ret_ = get_order[order_id]
+                        if ret["data"]["success"][0] == order_id or ret_["data"]["status"] == "5" or ret["data"]["status"] == "7":
+                            if ret["data"]["trade_volume"] != 0:
+                                amount = ret_["data"]["volume"] - ret["data"]["trade_volume"]
+                                FILLED_ORDER.add(order_id, ret["data"]["trade_avg_price"], ret["data"]["trade_volumn"], ret["data"]["fee"])
+                            order_id = give_order_request(ACCOUNT_ID, amount, price, SOURCE, SYMBOL, type_of_trade)["data"]["order_id"]
+                            wait_count = 5
+                            break
+                        elif ret_["data"]["status"] == "6":
+                            return 0
+                        else：
+                            time.sleep(1)
+                        
+                                
+                    
+            '''
+            ret = get_contract_depth(SYMBOL)[bid]
+            target = ret["bids"][0] if type_of_trade == "buy" else ret["asks"][0]
+            if(abs(target - price) > DELTA_VALUE):
+                price = target
+                max_retry += 1
+                if max_retry > 3:
+                    return 3
+                cancel_order(order_id)
+                ret = give_order_request(ACCOUNT_ID, amount, price , SOURCE, SYMBOL, type_of_trade)
+                order_id = ret["data"]
+                '''
 
-                   
+def sell_order(,clear_all):
+    if clear_all:
+        to_sell = KEPY_ORDER
+    else:
+        to_sell = order_id
 
-    def write_log(log_file, string, ts):
-        log_file.write(string(time.time()) + ":ts" + ts + ":string")
+                
 
-    def CheckWhetherCancelOrders():
+def write_log(log_file, string, ts):
+    log_file.write(string(time.time()) + ":ts" + ts + ":string")
 
-    def main:
+def CheckWhetherCancelOrders():
 
-        #initialization
-        global LOG_FILE_VERBOSE = file.open("Log_Verbose.txt")
-        global LOG_FILE_STATUS = file.open("Log_Status.txt")
-        global LOG_FILE_ERROR = file.open("Log_Error.txt")
-        #global CONFIG_FILE = file.open("Delta_Config.txt")
+def main:
 
-        ACCOUNT_NAME = "z"
-        TYPE = ""
-        POOL_VALUE = ""
-        DELTA_VALUE =  0.1
+    #initialization
+    global LOG_FILE_VERBOSE = file.open("Log_Verbose.txt")
+    global LOG_FILE_STATUS = file.open("Log_Status.txt")
+    global LOG_FILE_ERROR = file.open("Log_Error.txt")
+    #global CONFIG_FILE = file.open("Delta_Config.txt")
+
+    ACCOUNT_NAME = "z"
+    TYPE = ""
+    POOL_VALUE = ""
+    DELTA_VALUE =  0.1
+    
+    # Section of status variale
+    new_ts = 0
+    kline = {}
+    flag = 0
+    OPEN_LONG = {}
+    OPEN_SHORT = {}
+    OPEN_ORDER = {}
+    FILLED_ORDER = {}
+
+    # Param
+    face = 100            # 合约面值
+    add_times = 0         # 加仓次数初始化
+    pos_state = 0         # 仓位状态初始化
+    w1 = 20               # 开仓周期
+    w2 = 10               # 平仓周期
+    w3 = 20               # ATR周期
+    a = 0.5               # 加仓阈值 价格涨跌0.5倍ATR加仓
+    b = 2                 # 平仓阈值 价格涨跌2倍ATR止损
+    c = 6                 # 止盈阈值
+    d = 1                 # 盈利高点回撤1倍ATR则止盈
+    max_add_times = 3     # 最大加仓次数
+    risk_expo = 0.01      # 风险敞口
+
+    while(1):     
+        # request data
+        # skip if ts is not updated.
+        request_kline_data = get_contract_kline(self, symbol, period, size=150)
+        for ts_data in request_kline_data:
+            if ts_data["ts"] > new_ts:
+                kline.add(ts_data)
+                kline_updated = 1
+        current_ts = request_kline_data[-1]["ts"]
+
+        # compute signal
+        if kline_updated:
+            kline_updated = 0
+            signal = DochianRange(kline)
+        else:
+            continue
+
+        # get contract depth
+        ret = get_contract_depth(self, symbol, "step0")
+        buy_price = ret[]
+        sell_price = ret[]
+
+        # make decision and trade        
+        """ 计算true range """
+        true_range = max(kline.high.iloc[-1]-kline.low.iloc[-1],np.abs(kline.high.iloc[-1]-kline.close.iloc[-2]),np.abs(kline.low.iloc[-1]-kline.close.iloc[-2]))
+        kline.loc[kline.index[-1],'TR'] = true_range   # 最新的TR
+        atr = kline.TR.iloc[-w3:].mean()
         
-        # Section of status variale
-        new_ts = 0
-        kline = {}
-        flag = 0
-        OPEN_LONG = {}
-        OPEN_SHORT = {}
-        OPEN_ORDER = {}
-        FILLED_ORDER = {}
-
-        # Param
-        face = 100            # 合约面值
-        add_times = 0         # 加仓次数初始化
-        pos_state = 0         # 仓位状态初始化
-        w1 = 20               # 开仓周期
-        w2 = 10               # 平仓周期
-        w3 = 20               # ATR周期
-        a = 0.5               # 加仓阈值 价格涨跌0.5倍ATR加仓
-        b = 2                 # 平仓阈值 价格涨跌2倍ATR止损
-        c = 6                 # 止盈阈值
-        d = 1                 # 盈利高点回撤1倍ATR则止盈
-        max_add_times = 3     # 最大加仓次数
-        risk_expo = 0.01      # 风险敞口
-
-        while(1):     
-            # request data
-            # skip if ts is not updated.
-            request_kline_data = get_contract_kline(self, symbol, period, size=150)
-            for ts_data in request_kline_data:
-                if ts_data["ts"] > new_ts:
-                    kline.add(ts_data)
-                    kline_updated = 1
-            current_ts = request_kline_data[-1]["ts"]
-
-            # compute signal
-            if kline_updated:
-                kline_updated = 0
-                signal = DochianRange(kline)
+        """ 判断交易信号 """
+        
+        isOpenLong = kline.close.iloc[-1] > kline.high.iloc[-w1-1:-1].max() and kline.close.iloc[-2] <= kline.high.iloc[-w1-2:-2].max()  # 做多信号
+        isOpenShort = kline.close.iloc[-1] < kline.low.iloc[-w1-1:-1].min() and kline.close.iloc[-2] >= kline.low.iloc[-w1-2:-2].min()   # 做空信号
+        isCloseLong = kline.close.iloc[-1] < kline.low.iloc[-w2-1:-1].min()    # 平掉多单（若有）
+        isCloseShort = kline.close.iloc[-1] > kline.high.iloc[-w2-1:-1].max()  # 平掉空单（若有）
+        
+        """ 下单数量 """
+        unit = account_asset*risk_expo*(kline.close.iloc[-1]**2)/face/atr      # 下单合约张数
+        unit = int(max(unit,1))                        
+        
+        """ 判断如何下单 """
+        if pos_state == 0:
+            ## 无持仓
+            if isOpenLong:
+                ## 下多单
+                order = give_order(self, amount=unit, price='', type_of_trade='对手价下多单')    # 对手价下单指令
+                pos_state = 1
+                basis_price = '成交价'         # 止盈止损基准价
+                order_time = kline.index[-1]   # 下单时间
+                
+            elif isOpenShort:
+                ## 下空单
+                give_order(self, amount=unit, price='', type_of_trade='对手价下空单')   # 对手价下单指令
+                pos_state = -1
+                basis_price = '成交价'         # 止盈止损基准价
+                order_time = kline.index[-1]   # 下单时间
+        
+        elif pos_state == 1:
+            ## 持有多单
+            max_price = kline.loc[order_time:,'close'].max()  # 持仓期间收盘价的最高价
+            isAdd = kline.close.iloc[-1] >= basis_price + a*atr and add_times < max_add_times              # 价格上涨0.5倍ATR且加仓次数不超过3次则加仓
+            isStopLoss = kline.close.iloc[-1] <= basis_price - b*atr                                       # 价格跌破2倍ATR则止损
+            isStopProfit = max_price - basis_price >= c*atr and max_price - kline.close.iloc[-1] >= d*atr  # 价格涨破6倍ATR后跌落1倍ATR则及时止盈
+            
+            if (isCloseLong or isStopLoss or isStopProfit) and isOpenLong==0:
+                # 正常出仓或者止损或者止盈（为保证平仓后不再同向开仓，需要此时不满足做多信号）
+                if isOpenShort:
+                    # 平多单的同时开空单
+                    give_order(self, amount='全部已成交', price='', type_of_trade='对手价下平仓单')  # 将全部已成交委托平掉 
+                    give_order(self, amount=unit, price='', type_of_trade='对手价下空单')           # 对手价下单做空
+                    pos_state = -1
+                    add_times = 0
+                    basis_price = '成交价'         # 止盈止损基准价是该笔交易的成交价
+                    order_time = kline.index[-1]   # 下单时间
+                else:
+                    # 只需要平仓
+                    give_order(self, amount='全部已成交', price='', type_of_trade='对手价下平仓单')  
+                    pos_state = 0
+                    add_times = 0
+                    
+            elif isAdd:
+                # 加仓
+                give_order(self, amount=unit, price='', type_of_trade='对手价下多单')
+                add_times +=1
+                basis_price = '成交价'         # 止盈止损基准价更新为该笔交易的成交价
+                order_time = kline.index[-1]   # 下单时间更新为现在
+            else:
+                continue
+        
+        else:
+            ## 持有空单
+            min_price = kline.loc[order_time:,'close'].min()  # 持仓期间收盘价的最低价
+            isAdd = kline.close.iloc[-1] <= basis_price - a*atr and add_times < max_add_times              
+            isStopLoss = kline.close.iloc[-1] >= basis_price + b*atr                                       
+            isStopProfit = basis_price - min_price >= c*atr and kline.close.iloc[-1] - min_price >= d*atr 
+            
+            if (isCloseShort or isStopLoss or isStopProfit) and isOpenShort==0:
+                # 正常出仓或者止损或者止盈（为保证平仓后不再同向开仓，需要此时不满足做空信号）
+                if isOpenLong:
+                    # 平空单的同时开多单
+                    give_order(self, amount='全部已成交', price='', type_of_trade='对手价下平仓单')  # 将全部已成交委托平掉 
+                    give_order(self, amount=unit, price='', type_of_trade='对手价下多单')           # 对手价下单做多
+                    pos_state = 1
+                    add_times = 0
+                    basis_price = '成交价'         # 止盈止损基准价是该笔交易的成交价
+                    order_time = kline.index[-1]   # 下单时间
+                else:
+                    # 只需要平仓
+                    give_order(self, amount='全部已成交', price='', type_of_trade='对手价下平仓单')  
+                    pos_state = 0
+                    add_times = 0
+                    
+            elif isAdd:
+                # 加仓
+                give_order(self, amount=unit, price='', type_of_trade='对手价下空单')
+                add_times +=1
+                basis_price = '成交价'         # 止盈止损基准价更新为该笔交易的成交价
+                order_time = kline.index[-1]   # 下单时间更新为现在
             else:
                 continue
 
-            # get contract depth
-            ret = get_contract_depth(self, symbol, "step0")
-            buy_price = ret[]
-            sell_price = ret[]
 
-            # make decision and trade        
-            """ 计算true range """
-            true_range = max(kline.high.iloc[-1]-kline.low.iloc[-1],np.abs(kline.high.iloc[-1]-kline.close.iloc[-2]),np.abs(kline.low.iloc[-1]-kline.close.iloc[-2]))
-            kline.loc[kline.index[-1],'TR'] = true_range   # 最新的TR
-            atr = kline.TR.iloc[-w3:].mean()
-            
-            """ 判断交易信号 """
-            
-            isOpenLong = kline.close.iloc[-1] > kline.high.iloc[-w1-1:-1].max() and kline.close.iloc[-2] <= kline.high.iloc[-w1-2:-2].max()  # 做多信号
-            isOpenShort = kline.close.iloc[-1] < kline.low.iloc[-w1-1:-1].min() and kline.close.iloc[-2] >= kline.low.iloc[-w1-2:-2].min()   # 做空信号
-            isCloseLong = kline.close.iloc[-1] < kline.low.iloc[-w2-1:-1].min()    # 平掉多单（若有）
-            isCloseShort = kline.close.iloc[-1] > kline.high.iloc[-w2-1:-1].max()  # 平掉空单（若有）
-            
-            """ 下单数量 """
-            unit = account_asset*risk_expo*(kline.close.iloc[-1]**2)/face/atr      # 下单合约张数
-            unit = int(max(unit,1))                        
-            
-            """ 判断如何下单 """
-            if pos_state == 0:
-                ## 无持仓
-                if isOpenLong:
-                    ## 下多单
-                    order = give_order(self, amount=unit, price='', type_of_trade='对手价下多单')    # 对手价下单指令
-                    pos_state = 1
-                    basis_price = '成交价'         # 止盈止损基准价
-                    order_time = kline.index[-1]   # 下单时间
-                    
-                elif isOpenShort:
-                    ## 下空单
-                    give_order(self, amount=unit, price='', type_of_trade='对手价下空单')   # 对手价下单指令
-                    pos_state = -1
-                    basis_price = '成交价'         # 止盈止损基准价
-                    order_time = kline.index[-1]   # 下单时间
-            
-            elif pos_state == 1:
-                ## 持有多单
-                max_price = kline.loc[order_time:,'close'].max()  # 持仓期间收盘价的最高价
-                isAdd = kline.close.iloc[-1] >= basis_price + a*atr and add_times < max_add_times              # 价格上涨0.5倍ATR且加仓次数不超过3次则加仓
-                isStopLoss = kline.close.iloc[-1] <= basis_price - b*atr                                       # 价格跌破2倍ATR则止损
-                isStopProfit = max_price - basis_price >= c*atr and max_price - kline.close.iloc[-1] >= d*atr  # 价格涨破6倍ATR后跌落1倍ATR则及时止盈
-                
-                if (isCloseLong or isStopLoss or isStopProfit) and isOpenLong==0:
-                    # 正常出仓或者止损或者止盈（为保证平仓后不再同向开仓，需要此时不满足做多信号）
-                    if isOpenShort:
-                        # 平多单的同时开空单
-                        give_order(self, amount='全部已成交', price='', type_of_trade='对手价下平仓单')  # 将全部已成交委托平掉 
-                        give_order(self, amount=unit, price='', type_of_trade='对手价下空单')           # 对手价下单做空
-                        pos_state = -1
-                        add_times = 0
-                        basis_price = '成交价'         # 止盈止损基准价是该笔交易的成交价
-                        order_time = kline.index[-1]   # 下单时间
-                    else:
-                        # 只需要平仓
-                        give_order(self, amount='全部已成交', price='', type_of_trade='对手价下平仓单')  
-                        pos_state = 0
-                        add_times = 0
-                        
-                elif isAdd:
-                    # 加仓
-                    give_order(self, amount=unit, price='', type_of_trade='对手价下多单')
-                    add_times +=1
-                    basis_price = '成交价'         # 止盈止损基准价更新为该笔交易的成交价
-                    order_time = kline.index[-1]   # 下单时间更新为现在
-                else:
-                    continue
-            
-            else:
-                ## 持有空单
-                min_price = kline.loc[order_time:,'close'].min()  # 持仓期间收盘价的最低价
-                isAdd = kline.close.iloc[-1] <= basis_price - a*atr and add_times < max_add_times              
-                isStopLoss = kline.close.iloc[-1] >= basis_price + b*atr                                       
-                isStopProfit = basis_price - min_price >= c*atr and kline.close.iloc[-1] - min_price >= d*atr 
-                
-                if (isCloseShort or isStopLoss or isStopProfit) and isOpenShort==0:
-                    # 正常出仓或者止损或者止盈（为保证平仓后不再同向开仓，需要此时不满足做空信号）
-                    if isOpenLong:
-                        # 平空单的同时开多单
-                        give_order(self, amount='全部已成交', price='', type_of_trade='对手价下平仓单')  # 将全部已成交委托平掉 
-                        give_order(self, amount=unit, price='', type_of_trade='对手价下多单')           # 对手价下单做多
-                        pos_state = 1
-                        add_times = 0
-                        basis_price = '成交价'         # 止盈止损基准价是该笔交易的成交价
-                        order_time = kline.index[-1]   # 下单时间
-                    else:
-                        # 只需要平仓
-                        give_order(self, amount='全部已成交', price='', type_of_trade='对手价下平仓单')  
-                        pos_state = 0
-                        add_times = 0
-                        
-                elif isAdd:
-                    # 加仓
-                    give_order(self, amount=unit, price='', type_of_trade='对手价下空单')
-                    add_times +=1
-                    basis_price = '成交价'         # 止盈止损基准价更新为该笔交易的成交价
-                    order_time = kline.index[-1]   # 下单时间更新为现在
-                else:
-                    continue
-
-
-            # Update local status
+        # Update local status
