@@ -68,6 +68,8 @@ import TreatData as TD
 
 print('>>>>>>>>>>>>>>>>>>>>>>账户设置>>>>>>>>>>>>>>>>>>>>>>')
 url = 'https://api.hbdm.com'                       # 火币合约API链接
+access_key = 'f4c53d1f-dqnh6tvdf3-ce384ddc-0fa6b'
+secrect_key = '9be7ed9d-90557531-a993a272-ab096'
 dm = HuobiDM(url, access_key, secrect_key)         # 创建账户实例
 
 

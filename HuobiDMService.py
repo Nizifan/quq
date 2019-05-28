@@ -4,11 +4,12 @@
 # @Author  : zhaobo
 # @github  : 
 
-from HuobiDMUtil import http_get_request_with_retry, api_key_post
+from HuobiDMUtil import http_get_request, api_key_post
 
 import smtplib  #加载smtplib模块
 from email.mime.text import MIMEText
 from email.utils import formataddr
+
 
 class HuobiDM:
 
@@ -24,8 +25,9 @@ class HuobiDM:
     ======================
     '''
 
-    def send_mail(error_message, mail_to):
-        my_sender='发件人邮箱账号' #发件人邮箱账号，为了后面易于维护，所以写成了变量
+    def send_mail(self,error_message, mail_to):
+        my_sender = '发件人邮箱账号' #发件人邮箱账号，为了后面易于维护，所以写成了变量
+        my_user = ''
         ret=True
         try:
             msg=MIMEText('填写邮件内容','plain','utf-8')
@@ -41,19 +43,21 @@ class HuobiDM:
             ret=False
         return ret
 
-    def send_alert(error_message):
-        send_mail(error_message, "505529920@qq.com")
-        send_mail(error_message, "2691266020@qq.com")
+
+    def send_alert(self,error_message):
+        self.send_mail(error_message, "505529920@qq.com")
+        self.send_mail(error_message, "2691266020@qq.com")
+    
     
     def http_get_request_with_retry(self, url, param):
         retry_count = 3
         while retry_count > 0:
             ret = http_get_request(url, param)
-            if ret["status"] = "fail":
+            if ret["status"] == "fail":
                 retry_count -= 1
             else:
                 return ret
-        TODOSendAlert()
+        self.TODOSendAlert()
                 
 
     # 获取合约信息
@@ -74,7 +78,7 @@ class HuobiDM:
             params['contract_code'] = contract_code
     
         url = self.__url + '/api/v1/contract_contract_info'
-        return http_get_request_with_retry(url, params)
+        return self.http_get_request_with_retry(url, params)
     
     
     # 获取合约指数信息
@@ -85,7 +89,7 @@ class HuobiDM:
         params = {'symbol': symbol}
     
         url = self.__url + '/api/v1/contract_index'
-        return http_get_request_with_retry(url, params)
+        return self.http_get_request_with_retry(url, params)
     
     
     # 获取合约最高限价和最低限价
@@ -105,7 +109,7 @@ class HuobiDM:
             params['contract_code'] = contract_code
     
         url = self.__url + '/api/v1/contract_price_limit'
-        return http_get_request_with_retry(url, params)
+        return self.http_get_request_with_retry(url, params)
     
     
     # 获取当前可用合约总持仓量
@@ -121,7 +125,7 @@ class HuobiDM:
                   'contract_code': contract_code}
     
         url = self.__url + '/api/v1/contract_open_interest'
-        return http_get_request_with_retry(url, params)   
+        return self.http_get_request_with_retry(url, params)   
         
     
     # 获取行情深度
@@ -135,7 +139,7 @@ class HuobiDM:
                   'type': type}
     
         url = self.__url + '/market/depth'
-        return http_get_request_with_retry(url, params)
+        return self.http_get_request_with_retry(url, params)
     
     
     # 获取KLine
@@ -152,7 +156,7 @@ class HuobiDM:
             params['size'] = size
     
         url = self.__url + '/market/history/kline'
-        return http_get_request_with_retry(url, params)
+        return self.http_get_request_with_retry(url, params)
     
     
     # 获取聚合行情
@@ -163,7 +167,7 @@ class HuobiDM:
         params = {'symbol': symbol}
     
         url = self.__url + '/market/detail/merged'
-        return http_get_request_with_retry(url, params)
+        return self.http_get_request_with_retry(url, params)
     
     
     # 获取市场最近成交记录
@@ -176,7 +180,7 @@ class HuobiDM:
                   'size' : size}
     
         url = self.__url + '/market/trade'
-        return http_get_request_with_retry(url, params)
+        return self.http_get_request_with_retry(url, params)
     
     
     # 批量获取最近的交易记录
@@ -189,24 +193,35 @@ class HuobiDM:
                   'size' : size}
     
         url = self.__url + '/market/history/trade'
-        return http_get_request_with_retry(url, params)
+        return self.http_get_request_with_retry(url, params)
     
     
-    
-    
-    
-    
+
     '''
-    ======================
-    Trade/Account API
-    ======================
+    ==============================================
+    Account API
+    ==============================================
     '''
     
     # 获取用户账户信息
     def get_contract_account_info(self, symbol=''):
         """
-        :param symbol: "BTC","ETH"...如果缺省，默认返回所有品种
-        :return:
+        :param:
+            symbol: "BTC","ETH"...如果缺省，默认返回所有品种
+        :return: 
+            status : 'ok' 'error'
+            data:[{
+                symbol:品种代码
+                margin_balance : 账户权益
+                margin_position : 持仓保证金（当前持有仓位所占用的保证金）
+                margin_frozen : 冻结保证金
+                margin_available : 可用保证金
+                risk_rate : 保证金率
+                liquidation_price : 预估强平价
+                withdraw_available : 可划转数量
+                profit_real : 已实现盈亏(以平仓且未结算的盈亏)--从上一个交割结算时间开始计的平仓盈亏(交割结算后计入账户余额)--结算前可作为保证金但不能提现--已实现盈亏在结算前计入可用保证金
+                profit_unreal : 未实现盈亏 -- 当前未平仓位的盈亏
+                }]
         """
         
         params = {}
@@ -220,8 +235,28 @@ class HuobiDM:
     # 获取用户持仓信息
     def get_contract_position_info(self, symbol=''):
         """
-        :param symbol: "BTC","ETH"...如果缺省，默认返回所有品种
+        :param:
+            symbol: "BTC","ETH"...如果缺省，默认返回所有品种
         :return:
+            status : 'ok' 'error'
+            data:
+                [{
+                symbol ： BTC
+                contract_code : BTC180914
+                contract_type : quarter
+                volume : 持仓量
+                available : 可平仓数量
+                frozen : 冻结数量
+                cost_open : 开仓均价
+                cost_hold : 持仓均价
+                profit_unreal : 未实现盈亏
+                profit_rate : 收益率
+                profit : 收益
+                position_margin : 持仓保证金
+                lever_rate : 杠杆倍数
+                direction : 'buy' 'sell'
+                ts : 时间
+                }]
         """
         
         params = {}
@@ -233,23 +268,41 @@ class HuobiDM:
     
     
     
-    # 合约下单
+    '''
+    ==============================================
+    Trade API
+    ==============================================
+    '''
+    #### 合约下单
     def send_contract_order(self, symbol, contract_type, contract_code, 
                             client_order_id, price,volume,direction,offset,
                             lever_rate,order_price_type):
         """
+        params:
         :symbol: "BTC","ETH"..
         :contract_type: "this_week", "next_week", "quarter"
         :contract_code: "BTC181228"
-        :client_order_id: 客户自己填写和维护，这次一定要大于上一次
-        :price             必填   价格
-        :volume            必填  委托数量（张）
+        :client_order_id: 客户自己填写和维护，这次一定要大于上一次(可不填) 格式-long 
+        :price             必填   价格 格式-decimal
+        :volume            必填  委托数量（张） 格式-long
         :direction         必填  "buy" "sell"
-        :offset            必填   "open", "close"
-        :lever_rate        必填  杠杆倍数
+        :offset            必填   "open"开, "close"平
+        :lever_rate        必填  杠杆倍数 格式-int
         :order_price_type  必填   "limit"限价， "opponent" 对手价
-        备注：如果contract_code填了值，那就按照contract_code去下单，如果contract_code没有填值，则按照symbol+contract_type去下单。
-        :
+        **备注：如果contract_code填了值，那就按照contract_code去下单，如果contract_code没有填值，则按照symbol+contract_type去下单。
+        **对手价下单price价格参数不用传，对手价下单价格是买一和卖一价。
+        
+        开平方向：
+        开多：买入开多(direction用buy、offset用open)
+        平多：卖出平多(direction用sell、offset用close)
+        开空：卖出开空(direction用sell、offset用open)
+        平空：买入平空(direction用buy、offset用close)
+        
+        return:
+            status : 'ok' 'error'
+            data : 
+                {order_id : 订单ID, client_order_id : 用户下单时填写的客户端订单ID，没填则不返回}
+            ts
         """
         
         params = {"price": price,
@@ -325,14 +378,37 @@ class HuobiDM:
         return api_key_post(self.__url, request_path, params, self.__access_key, self.__secret_key)
     
     
+    """
+    ==================================================================
+    订单信息
+    ==================================================================
+    """
     # 获取合约订单信息
     def get_contract_order_info(self, symbol, order_id='', client_order_id=''):
         """
         参数名称	        是否必须	类型	    描述
-        symbol          true    string  BTC, ETH, ...
+        symbol           true    string  BTC, ETH, ...
         order_id	        false	string	订单ID（ 多个订单ID中间以","分隔,一次最多允许查询20个订单 ）
-        client_order_id	false	string	客户订单ID(多个订单ID中间以","分隔,一次最多允许查询20个订单)
+        client_order_id	 false	string	客户订单ID(多个订单ID中间以","分隔,一次最多允许查询20个订单)
+        
         备注：order_id和client_order_id都可以用来查询，同时只可以设置其中一种，如果设置了两种，默认以order_id来查询。
+        周五交割结算后，会把结束状态的订单（5部分成交已撤单 6全部成交 7已撤单）删除掉。
+        
+        return:
+        data:[{
+            symbol
+            contract_type
+            contract_code
+            volume : 委托数量
+            price : 委托数量
+            order_price_type : 'limit' 'opponent'
+            direction : "buy":买 "sell":卖
+            offset : "open":开 "close":平
+            lever_rate : 杠杆倍数	1\5\10\20
+            order_id : 订单ID
+            client_order_id	: 客户订单ID
+            trade_volume : 成交数量   trade_avg_price:成交均价   fee:手续费
+            
         """
         
         params = {"symbol": symbol}
@@ -346,7 +422,6 @@ class HuobiDM:
     
     
     # 获取合约订单明细信息
-        
     def get_contract_order_detail(self, symbol, order_id, order_type, created_at, page_index=None, page_size=None):
         """
         参数名称     是否必须  类型    描述
@@ -421,7 +496,7 @@ class HuobiDM:
 
 
     def get_open_order(self, account_id, symbol):
-        param = {
+        params = {
             "account-id": account_id,
             "symbol": symbol,
             "type": "both",
@@ -430,10 +505,11 @@ class HuobiDM:
 
         url = self.__url + '/api/v1/order/openOrders'
 
-        return http_get_request_with_retry(url, params)
+        return self.http_get_request_with_retry(url, params)
 
-        def give_order_request(self, account_id, amount, price, source, symbol, type_of_trade):
-        param = {
+
+    def give_order_request(self, account_id, amount, price, source, symbol, type_of_trade):
+        params = {
             "account-id": account_id,
             "amount": amount,
             "price": price,
@@ -444,17 +520,17 @@ class HuobiDM:
 
         url = self.__url + '/api/v1/order/orders/place'
 
-        return http_get_request_with_retry(url, params)
+        return self.http_get_request_with_retry(url, params)
 
     def get_order(self, order_id):
-        param = {
+        params = {
             "order-id": order_id
         }
 
         url = self.__url + '/api/v1/order/openOrders'
 
-        return http_get_request_with_retry(url, params)
+        return self.http_get_request_with_retry(url, params)
 
     # return list {"currency":utsc, "type":"frozen/trade", "amount":""}
-    def get_account_balance(self):
-        return http_get_request_with_retry(self._url  + "/v1/account/"+ACCOUNT_ID+"/balance")
+    def get_account_balance(self,ACCOUNT_ID):
+        return self.http_get_request_with_retry(self._url  + "/v1/account/"+ACCOUNT_ID+"/balance")
