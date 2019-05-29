@@ -104,7 +104,7 @@ def write_log(log_file, string, ts):
 
 
 def main(dm,symbol,contract_type,params,initial_eqt=0.1,lvg=5,wait_num=5,freq='15min'):
-    """ 换仓日16:00前关掉自动交易，若持有合约则手动换仓，换仓结束手动重启自动交易
+    """ 换仓日16:00前关掉自动交易，若持有合约则强平,16:00后重新开始新合约的自动交易
     =========================================
     dm : 账户
     contract_info : 合约
@@ -163,7 +163,8 @@ def main(dm,symbol,contract_type,params,initial_eqt=0.1,lvg=5,wait_num=5,freq='1
     add_times = 0    # 加仓次数初始化
     basis_price = 0  # 止盈止损加仓基准价--上一次开仓价格
     basis_time = 0   # 止盈止损加仓的参考时间--上一次开仓的时间
-    while datetime.datetime.now().strftime("%Y%m%d %H:%M") < chgpos_date+' 16:00': 
+    
+    while datetime.datetime.now().strftime("%Y%m%d %H:%M") < chgpos_date+' 15:58': 
         """ 当前日期没到换仓日 """
         
         # 更新K线:只更新走完的K线
@@ -187,8 +188,9 @@ def main(dm,symbol,contract_type,params,initial_eqt=0.1,lvg=5,wait_num=5,freq='1
         # 最新一根K线的交易信号(正常情况每次最多更新1根K线,若中断交易导致缺失多根K线,则只能对最近1根K线做交易，忽略中间的K线)
         pnl.loc[klines.index[-1]] = 0  # 只更新最新一根K线的持仓
         
-        isOpenLong = klines.close.iloc[-1] > klines.high.iloc[-w1-1:-1].max() and klines.close.iloc[-2] <= klines.high.iloc[-w1-2:-2].max()
-        isOpenShort = klines.close.iloc[-1] < klines.low.iloc[-w1-1:-1].min() and klines.close.iloc[-2] >= klines.low.iloc[-w1-2:-2].min()
+        # 换仓日16:00结算，因此15:00后不再开仓
+        isOpenLong = datetime.datetime.now().strftime("%Y%m%d %H:%M") < chgpos_date+' 15:00' and klines.close.iloc[-1] > klines.high.iloc[-w1-1:-1].max() and klines.close.iloc[-2] <= klines.high.iloc[-w1-2:-2].max()
+        isOpenShort = datetime.datetime.now().strftime("%Y%m%d %H:%M") < chgpos_date+' 15:00' and klines.close.iloc[-1] < klines.low.iloc[-w1-1:-1].min() and klines.close.iloc[-2] >= klines.low.iloc[-w1-2:-2].min()
         isCloseLong = klines.close.iloc[-1] < klines.low.iloc[-w2-1:-1].min()
         isCloseShort = klines.close.iloc[-1] > klines.high.iloc[-w2-1:-1].max()
         
@@ -313,7 +315,7 @@ def main(dm,symbol,contract_type,params,initial_eqt=0.1,lvg=5,wait_num=5,freq='1
             
         time.sleep(0.1)
     
-    """ 第一次到达换仓日的结算时间 """
+    """ 超过换仓日下午3点 """
     if pnl.合约张数.iloc[-1] != 0:
         # 还有合约--强制平仓
         volume = np.abs(pnl.合约张数.iloc[-1])
@@ -358,8 +360,14 @@ freq = '15min'
 
 
 print('>>>>>>>>>>>>>>>>>>>>>>开始交易>>>>>>>>>>>>>>>>>>>>>>')
+contract_codes = []
+pnls = []
 contract_code,pnl = main(dm,symb,type,params,initial_eqt=initial_eqt,lvg=lvg,wait_num=wait_num,freq=freq)
-account_info = dm.get_contract_account_info(symbol=symb)
-account_info = account_info['data'][0]
-asset = account_info['margin_balance'] # 账户权益
-contract_code,pnl = main(dm,symb,type,params,initial_eqt=asset,lvg=lvg,wait_num=wait_num,freq=freq)
+contract_codes.append(contract_code)
+pnls.append(pnl)
+while 1:
+    """ 两次循环间隔1个季度 """
+    account_info = dm.get_contract_account_info(symbol=symb)  # 账户信息
+    account_info = account_info['data'][0]
+    asset = account_info['margin_balance']                    # 账户权益
+    contract_code,pnl = main(dm,symb,type,params,initial_eqt=asset,lvg=lvg,wait_num=wait_num,freq=freq)
