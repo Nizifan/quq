@@ -33,7 +33,7 @@ def send_order(dm,symbol,contract_type,contract_code,volume,direction,offset,cli
     默认5倍杠杆、对手价下单、最多查询5次
     """
     
-    FILLED_ORDER = []  # 保存每笔交易详情
+    FILLED_ORDER = []  # 保存每笔交易详情:order_id 成交量 成交均价
     ret = dm.send_contract_order(symbol=symbol,contract_type=contract_type,contract_code=contract_code,client_order_id=client_order_id,\
                                  price=price,volume=volume,direction=direction,offset=offset,lever_rate=lever_rate,order_price_type=order_price_type)
     order_id = ret["data"]["order_id"]
@@ -103,8 +103,8 @@ def write_log(log_file, string, ts):
 
 
 
-def main(dm,contract_info,params,initial_eqt=0.1,lvg=5,wait_num=5,freq='15min'):
-    """
+def main(dm,symbol,contract_type,params,initial_eqt=0.1,lvg=5,wait_num=5,freq='15min'):
+    """ 换仓日16:00前关掉自动交易，若持有合约则手动换仓，换仓结束手动重启自动交易
     =========================================
     dm : 账户
     contract_info : 合约
@@ -115,16 +115,6 @@ def main(dm,contract_info,params,initial_eqt=0.1,lvg=5,wait_num=5,freq='15min'):
     =========================================
     """
     
-    map = {'quarter':'CQ','this_week':'CW','next_week':'NW'}  # 合约类型角标映射
-
-    ## 合约参数
-    symbol = contract_info['symbol']               # BTC
-    contract_type = contract_info['contract_type'] # quarter
-    contract_code = contract_info['contract_code'] # BTC190628
-    face_val = contract_info['contract_size']      # 面值 100
-    #min_move = contract_info['price_tick']         # 最小变动单位0.01
-    contract_name = symbol+'_'+map[contract_type]
-
     ## 策略参数
     w1 = params['w1']                              # 开仓参数: 价格超过前w1根K线的最高价或低于最低价
     w2 = params['w2']                              # 平仓参数: 价格低于前w2根K线的最低价就平掉多单
@@ -136,31 +126,53 @@ def main(dm,contract_info,params,initial_eqt=0.1,lvg=5,wait_num=5,freq='15min'):
     max_add_times = params['max_add_times']        # 最大加仓次数
     risk_ratio = params['risk_ratio']              # 风险暴露比率
     
+    ## 合约参数
+    # 2019.6.14(交割月倒数第3个周五)16:00结算后,BTC190628合约会成为次周合约,且产生新的季度合约
+    # 20190614 16:00前的季度合约是BTC190628 之后的季度合约是BTC190927
+    # 换仓: 20190614 16:00之后，BTC190628若有仓位则平仓且在BTC190927上开相同数量
+    contract_info = dm.get_contract_info(symbol=symbol, contract_type=contract_type, contract_code='')
+    contract_info = contract_info['data'][0]                  # 当前的季度合约的合约信息
+    face_val = contract_info['contract_size']                 # 面值 100
+    min_move = contract_info['price_tick']                    # 最小变动单位0.01
+    
+    contract_code = contract_info['contract_code']            # 20190614 16:00前：BTC190628
+    delivery_date = contract_info['delivery_date']            # 交割日
+    # 换仓日：当前日期一定在换仓日16:00之前
+    chgpos_date = (datetime.datetime.strptime(delivery_date,'%Y%m%d')+datetime.timedelta(days=-14)).strftime("%Y%m%d") 
+    
+    map = {'quarter':'CQ','this_week':'CW','next_week':'NW'}  # 合约类型角标映射
+    contract_name = symbol+'_'+map[contract_type]             # BTC_CQ
+    
+    """
+    symbol = contract_info['symbol']               # BTC
+    contract_type = contract_info['contract_type'] # quarter
+    """
+
     ## 预抓K线
-    klines = dm.get_contract_kline(symbol=contract_name, period=freq, size=200)
+    klines = dm.get_contract_kline(symbol=contract_name, period=freq, size=200)             
     klines = pd.DataFrame(klines['data'])
     klines.index = [time.strftime("%Y-%m-%d %H:%M", time.localtime(d)) for d in klines.id]  # 北京时间
     klines['TR'] = TD.true_range(klines)             # 计算真实波幅
     klines['ATR'] = klines.TR.rolling(w3).mean()     # 平均真实波幅
 
     ## 持仓信息初始化
-    pnl = pd.DataFrame(index = klines.index ,columns=['合约张数','开仓价','平仓价'])
+    pnl = pd.DataFrame(index = klines.index ,columns=['合约张数','开仓价','平仓价'])          # 合约张数有正负,表示多/空
     pnl.loc[:,:] = 0
     
     pos_state = 0    # 仓位状态初始化
     add_times = 0    # 加仓次数初始化
     basis_price = 0  # 止盈止损加仓基准价--上一次开仓价格
     basis_time = 0   # 止盈止损加仓的参考时间--上一次开仓的时间
-    while(1):     
-        # 更新K线
+    while datetime.datetime.now().strftime("%Y%m%d %H:%M") < chgpos_date+' 16:00': 
+        """ 当前日期没到换仓日 """
+        
+        # 更新K线:只更新走完的K线
         kline = dm.get_contract_kline(symbol=contract_name, period=freq, size=20)
         kline = pd.DataFrame(kline['data'])
         kline.index = [time.strftime("%Y-%m-%d %H:%M", time.localtime(d)) for d in kline.id]  # 北京时间
-        num = (kline.index>klines.index[-1]).sum()
-        """
-        北京时间判断K线是否走完
-        """
-        if num == 0 or '最新的K线没有走完':
+        num = (kline.index>klines.index[-1]).sum()  # K线更新数量
+
+        if num == 0:
             # 没有更新K线
             continue
         else:
@@ -299,8 +311,20 @@ def main(dm,contract_info,params,initial_eqt=0.1,lvg=5,wait_num=5,freq='15min'):
         pnl.loc[klines.index[-1],'开仓价'] = trade_price
         basis_price = trade_price
             
-            
-            
+        time.sleep(0.1)
+    
+    """ 第一次到达换仓日的结算时间 """
+    if pnl.合约张数.iloc[-1] != 0:
+        # 还有合约--强制平仓
+        volume = np.abs(pnl.合约张数.iloc[-1])
+        direction = 'buy' if pnl.合约张数.iloc[-1] < 0 else 'sell'
+        offset = 'close'
+        
+        order_split = send_order(dm,'','',contract_code,volume,direction,offset,client_order_id='',price='',lever_rate=lvg,order_price_type='opponent',wait_num=wait_num)
+        trade_price = order_split.trade_volume.sum()/(order_split.trade_volume/order_split.trade_avg_price).sum() # 成交均价
+        pnl.loc['close'] = [0,0,trade_price]
+        
+    return contract_code,pnl
        
 
             
@@ -317,10 +341,6 @@ print('>>>>>>>>>>>>>>>>>>>>>>合约选择>>>>>>>>>>>>>>>>>>>>>>')
 # 注：交割月份的倒数第三个周五16:00结算后会生成新的季度合约,因此在交割月份的最后一个周五前换仓，即平掉旧合约并在新合约上开相同仓位
 symb = 'BTC'                                       # BTC ETF ---- BTC_CW, BTC_NW, BTC_CQ , ...  
 type = 'quarter'
-code = ''
-map = {'quarter':'CQ','this_week':'CW','next_week':'NW'}  # 合约类型角标映射
-contract_info = dm.get_contract_info(symbol=symb, contract_type=type, contract_code=code)
-contract_info = contract_info['data'][0]                 # 合约基本信息
 
 
 print('>>>>>>>>>>>>>>>>>>>>>>转账>>>>>>>>>>>>>>>>>>>>>>')
@@ -338,5 +358,8 @@ freq = '15min'
 
 
 print('>>>>>>>>>>>>>>>>>>>>>>开始交易>>>>>>>>>>>>>>>>>>>>>>')
-main(dm,contract_info,params,initial_eqt=initial_eqt,lvg=lvg,wait_num=wait_num,freq=freq)
-
+contract_code,pnl = main(dm,symb,type,params,initial_eqt=initial_eqt,lvg=lvg,wait_num=wait_num,freq=freq)
+account_info = dm.get_contract_account_info(symbol=symb)
+account_info = account_info['data'][0]
+asset = account_info['margin_balance'] # 账户权益
+contract_code,pnl = main(dm,symb,type,params,initial_eqt=asset,lvg=lvg,wait_num=wait_num,freq=freq)

@@ -32,9 +32,11 @@ def http_get_request(url, params, add_to_headers=None):
             return response.json()
         else:
             return {"status":"fail"}
+    
     except Exception as e:
-        print("httpGet failed, detail is:%s" %e)
+        #print("httpGet failed, detail is:%s" %e)
         return {"status":"fail","msg": "%s"%e}
+
 
 def http_post_request(url, params, add_to_headers=None):
     headers = {
@@ -52,7 +54,7 @@ def http_post_request(url, params, add_to_headers=None):
         else:
             return response.json()
     except Exception as e:
-        print("httpPost failed, detail is:%s" % e)
+        #print("httpPost failed, detail is:%s" % e)
         return {"status":"fail","msg": "%s"%e}
 
 

@@ -10,6 +10,9 @@ import smtplib  #加载smtplib模块
 from email.mime.text import MIMEText
 from email.utils import formataddr
 
+import pandas as pd
+import re
+
 
 class HuobiDM:
 
@@ -21,7 +24,7 @@ class HuobiDM:
     
     '''
     ======================
-    Market data API
+    报警
     ======================
     '''
 
@@ -49,15 +52,24 @@ class HuobiDM:
         self.send_mail(error_message, "2691266020@qq.com")
     
     
+    def TODOSendAlert(self,error_msg):
+        print(error_msg)
+    
+    '''
+    ======================
+    行情数据,无需签名
+    ======================
+    '''
+
     def http_get_request_with_retry(self, url, param):
         retry_count = 3
         while retry_count > 0:
             ret = http_get_request(url, param)
-            if ret["status"] == "fail":
+            if ret["status"] in ["fail","error"]:
                 retry_count -= 1
             else:
                 return ret
-        self.TODOSendAlert()
+        self.TODOSendAlert(ret)
                 
 
     # 获取合约信息
@@ -156,7 +168,15 @@ class HuobiDM:
             params['size'] = size
     
         url = self.__url + '/market/history/kline'
-        return self.http_get_request_with_retry(url, params)
+        klines = self.http_get_request_with_retry(url, params)
+        ts = klines['ts']/1000                 # 推送时间
+        klines = pd.DataFrame(klines['data'])  # 数据
+        if ts >= klines.id.iloc[-1]+60*int(re.sub(r'([\D]+)','',period)):
+            # 推送时间超过K线结束时间
+            return klines
+        else:
+            # K线没有走完就推送
+            return klines.iloc[:-1]
     
     
     # 获取聚合行情
@@ -196,6 +216,23 @@ class HuobiDM:
         return self.http_get_request_with_retry(url, params)
     
     
+    """
+    =======================
+    需要签名的请求
+    =======================
+    """
+    
+    def api_key_post_retry(self, path, params):
+        
+        retry_count = 3
+        while retry_count > 0:
+            ret = api_key_post(self.__url, path, params, self.__access_key, self.__secret_key)
+            if ret["status"] in ["fail","error"]:
+                retry_count -= 1
+            else:
+                return ret
+        self.TODOSendAlert(ret)
+        
 
     '''
     ==============================================
@@ -229,7 +266,7 @@ class HuobiDM:
             params["symbol"] = symbol
     
         request_path = '/api/v1/contract_account_info'
-        return api_key_post(self.__url, request_path, params, self.__access_key, self.__secret_key)
+        return self.api_key_post_retry(request_path, params)
     
     
     # 获取用户持仓信息
@@ -264,7 +301,7 @@ class HuobiDM:
             params["symbol"] = symbol
     
         request_path = '/api/v1/contract_position_info'
-        return api_key_post(self.__url, request_path, params, self.__access_key, self.__secret_key)
+        return self.api_key_post_retry(request_path, params)
     
     
     
@@ -321,7 +358,7 @@ class HuobiDM:
             params['client_order_id'] = client_order_id
     
         request_path = '/api/v1/contract_order'
-        return api_key_post(self.__url, request_path, params, self.__access_key, self.__secret_key)
+        return self.api_key_post_retry(request_path, params)
     
     
     
@@ -344,7 +381,7 @@ class HuobiDM:
         
         params = orders_data
         request_path = '/api/v1/contract_batchorder'
-        return api_key_post(self.__url, request_path, params, self.__access_key, self.__secret_key)
+        return self.api_key_post_retry(request_path, params)
     
     
     # 撤销订单
@@ -364,7 +401,7 @@ class HuobiDM:
             params["client_order_id"] = client_order_id  
     
         request_path = '/api/v1/contract_cancel'
-        return api_key_post(self.__url, request_path, params, self.__access_key, self.__secret_key)
+        return self.api_key_post_retry(request_path, params)
     
     # 全部撤单
     def cancel_all_contract_order(self, symbol):
@@ -375,7 +412,7 @@ class HuobiDM:
         params = {"symbol": symbol}
     
         request_path = '/api/v1/contract_cancelall'
-        return api_key_post(self.__url, request_path, params, self.__access_key, self.__secret_key)
+        return self.api_key_post_retry(request_path, params)
     
     
     """
@@ -400,7 +437,7 @@ class HuobiDM:
             contract_type
             contract_code
             volume : 委托数量
-            price : 委托数量
+            price : 委托价格
             order_price_type : 'limit' 'opponent'
             direction : "buy":买 "sell":卖
             offset : "open":开 "close":平
@@ -418,7 +455,7 @@ class HuobiDM:
             params["client_order_id"] = client_order_id  
     
         request_path = '/api/v1/contract_order_info'
-        return api_key_post(self.__url, request_path, params, self.__access_key, self.__secret_key)
+        return self.api_key_post_retry(request_path, params)
     
     
     # 获取合约订单明细信息
@@ -443,7 +480,7 @@ class HuobiDM:
             params["page_size"] = page_size  
     
         request_path = '/api/v1/contract_order_detail'
-        return api_key_post(self.__url, request_path, params, self.__access_key, self.__secret_key)
+        return self.api_key_post_retry(request_path, params)
     
     
     # 获取合约当前未成交委托
@@ -464,7 +501,7 @@ class HuobiDM:
             params["page_size"] = page_size  
     
         request_path = '/api/v1/contract_openorders'
-        return api_key_post(self.__url, request_path, params, self.__access_key, self.__secret_key)
+        return self.api_key_post_retry(request_path, params)
     
     
     # 获取合约历史委托
@@ -492,45 +529,7 @@ class HuobiDM:
             params["page_size"] = page_size  
     
         request_path = '/api/v1/contract_hisorders'
-        return api_key_post(self.__url, request_path, params, self.__access_key, self.__secret_key)
+        return self.api_key_post_retry(request_path, params)
 
 
-    def get_open_order(self, account_id, symbol):
-        params = {
-            "account-id": account_id,
-            "symbol": symbol,
-            "type": "both",
-            "size": 100
-        }
-
-        url = self.__url + '/api/v1/order/openOrders'
-
-        return self.http_get_request_with_retry(url, params)
-
-
-    def give_order_request(self, account_id, amount, price, source, symbol, type_of_trade):
-        params = {
-            "account-id": account_id,
-            "amount": amount,
-            "price": price,
-            "source": source,
-            "symbol": symbol,
-            "type": type_of_trade
-        }
-
-        url = self.__url + '/api/v1/order/orders/place'
-
-        return self.http_get_request_with_retry(url, params)
-
-    def get_order(self, order_id):
-        params = {
-            "order-id": order_id
-        }
-
-        url = self.__url + '/api/v1/order/openOrders'
-
-        return self.http_get_request_with_retry(url, params)
-
-    # return list {"currency":utsc, "type":"frozen/trade", "amount":""}
-    def get_account_balance(self,ACCOUNT_ID):
-        return self.http_get_request_with_retry(self._url  + "/v1/account/"+ACCOUNT_ID+"/balance")
+    
